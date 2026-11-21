@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "image-compressor-quadtree"
+version = "1.0.0"
+description = "CLI image compression using quadtrees"
+requires-python = ">=3.10"
+dependencies = ["Pillow>=10.0"]
+
+[project.scripts]
+image-compressor = "image_compressor.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["image_compressor*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.pylint.main]
+py-version = "3.10"
+disable = ["too-few-public-methods"]
