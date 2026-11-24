@@ -77,16 +77,37 @@ class ImageQuadTree:
         root = self.root or self.build()
         result = self.compress()
         draw = ImageDraw.Draw(result)
-        for node in self._nodes(root):
-            if not node.is_leaf:
-                draw.rectangle(node.box, outline=color, width=1)
+        for node in self._leaves(root):
+            self._draw_box_outline(draw, node.box, color)
         return result
 
-    def animation_frames(self) -> list[Image.Image]:
+    def animation_frames(
+        self,
+        show_boundaries: bool = True,
+        boundary_color: Color = (255, 0, 0),
+    ) -> list[Image.Image]:
         """Return images showing progressively deeper compression levels."""
         root = self.root or self.build()
         levels = max((self._depth(node) for node in self._nodes(root)), default=0)
-        return [self._render_at_depth(root, level) for level in range(levels + 1)]
+        return [
+            self._render_at_depth(
+                root,
+                level,
+                show_boundaries=show_boundaries,
+                boundary_color=boundary_color,
+            )
+            for level in range(levels + 1)
+        ]
+
+    def _draw_box_outline(
+        self,
+        draw: ImageDraw.ImageDraw,
+        box: tuple[int, int, int, int],
+        color: Color,
+    ) -> None:
+        left, top, right, bottom = box
+        width = min(3, max(1, min(right - left, bottom - top) // 2))
+        draw.rectangle(box, outline=color, width=width)
 
     def _build_node(
         self, box: tuple[int, int, int, int], depth: int
@@ -151,13 +172,21 @@ class ImageQuadTree:
             return 0
         return 1 + max(self._depth(child) for child in node.children or ())
 
-    def _render_at_depth(self, root: ImageNode, depth: int) -> Image.Image:
+    def _render_at_depth(
+        self,
+        root: ImageNode,
+        depth: int,
+        show_boundaries: bool = True,
+        boundary_color: Color = (255, 0, 0),
+    ) -> Image.Image:
         result = Image.new("RGB", self.image.size)
         draw = ImageDraw.Draw(result)
 
         def render(node: ImageNode, remaining: int) -> None:
             if remaining == 0 or node.is_leaf:
                 draw.rectangle(node.box, fill=node.color)
+                if show_boundaries:
+                    self._draw_box_outline(draw, node.box, boundary_color)
                 return
             for child in node.children or ():
                 render(child, remaining - 1)

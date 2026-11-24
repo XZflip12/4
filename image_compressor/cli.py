@@ -7,7 +7,10 @@ from pathlib import Path
 
 from PIL import Image
 
-from .compression import ImageQuadTree, save_gif
+try:
+    from .compression import ImageQuadTree, save_gif
+except ImportError:
+    from compression import ImageQuadTree, save_gif
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,6 +29,11 @@ def build_parser() -> argparse.ArgumentParser:
         "-g", "--gif", type=Path, help="path for a step-by-step GIF"
     )
     parser.add_argument(
+        "--no-gif-boundaries",
+        action="store_true",
+        help="do not draw quadtree boundaries in the generated GIF",
+    )
+    parser.add_argument(
         "-c",
         "--compression",
         type=int,
@@ -39,24 +47,64 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _ensure_parent_dir(path: Path) -> None:
+    """Create parent directory for an output path if needed."""
+    if path.parent and str(path.parent) not in ("", "."):
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the image compression CLI."""
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
     if not args.input.is_file():
-        raise FileNotFoundError(f"input image not found: {args.input}")
-    with Image.open(args.input) as source:
-        tree = ImageQuadTree(
-            source,
-            compression=args.compression,
-            min_size=args.min_size,
-            max_depth=args.max_depth,
-            workers=args.workers,
-        )
-        tree.compress().save(args.output)
-        if args.boundaries:
-            tree.with_boundaries().save(args.boundaries)
-        if args.gif:
-            save_gif(tree.animation_frames(), str(args.gif), args.duration)
+        parser.error(f"input image not found: {args.input}")
+    if args.duration <= 0:
+        parser.error("--duration must be positive")
+
+    _ensure_parent_dir(args.output)
+    if args.boundaries:
+        _ensure_parent_dir(args.boundaries)
+    if args.gif:
+        _ensure_parent_dir(args.gif)
+
+    try:
+        with Image.open(args.input) as source:
+            tree = ImageQuadTree(
+                source,
+                compression=args.compression,
+                min_size=args.min_size,
+                max_depth=args.max_depth,
+                workers=args.workers,
+            )
+            tree.build()
+
+            compressed = tree.compress()
+            try:
+                compressed.save(args.output)
+            finally:
+                compressed.close()
+
+            if args.boundaries:
+                bounded = tree.with_boundaries()
+                try:
+                    bounded.save(args.boundaries)
+                finally:
+                    bounded.close()
+
+            if args.gif:
+                frames = tree.animation_frames(
+                    show_boundaries=not args.no_gif_boundaries
+                )
+                try:
+                    save_gif(frames, str(args.gif), args.duration)
+                finally:
+                    for frame in frames:
+                        frame.close()
+    except ValueError as exc:
+        parser.error(str(exc))
+
     return 0
 
 
